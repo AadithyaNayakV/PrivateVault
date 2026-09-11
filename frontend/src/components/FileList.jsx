@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import { decryptFile } from "../crypto/decryptFile";
+import { decryptFile, decryptName } from "../crypto/decryptFile";
 import EncryptionPasswordModal from "./EncryptionPasswordModal";
 
 function formatSize(bytes) {
@@ -24,6 +24,11 @@ function triggerDownload(buffer, filename, mimeType) {
 export default function FileList({ files, onChanged, onError }) {
   const [downloadTarget, setDownloadTarget] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  // Filenames are encrypted client-side (see crypto/encryptFile.js) — the
+  // server and the /files list never see them in plaintext. This just
+  // remembers names decrypted earlier in this session so a row doesn't
+  // revert to a placeholder after you've already unlocked it once.
+  const [revealedNames, setRevealedNames] = useState({});
 
   async function handleDecrypt(password) {
     const file = downloadTarget;
@@ -32,19 +37,29 @@ export default function FileList({ files, onChanged, onError }) {
       api.downloadFile(file.id),
     ]);
 
+    // Content decryption is the operation that must succeed — a wrong
+    // password or corrupted ciphertext should surface as an error here.
+    const plaintext = await decryptFile(
+      ciphertextBuffer,
+      metadata.iv,
+      metadata.salt,
+      password,
+      metadata.kdf_iterations
+    );
+
+    // Name decryption is best-effort: a file uploaded before filenames were
+    // encrypted client-side won't be in the expected format, but that must
+    // never block getting the (successfully decrypted) file itself back.
+    let name = `file-${file.id}`;
     try {
-      const plaintext = await decryptFile(
-        ciphertextBuffer,
-        metadata.iv,
-        metadata.salt,
-        password,
-        metadata.kdf_iterations
-      );
-      triggerDownload(plaintext, file.encrypted_name, file.mime_type);
-      setDownloadTarget(null);
-    } catch (err) {
-      throw err;
+      name = await decryptName(metadata.encrypted_name, metadata.salt, password, metadata.kdf_iterations);
+      setRevealedNames((prev) => ({ ...prev, [file.id]: name }));
+    } catch {
+      // fall back to the placeholder name
     }
+
+    triggerDownload(plaintext, name, metadata.mime_type);
+    setDownloadTarget(null);
   }
 
   async function handleDelete(id) {
@@ -70,7 +85,7 @@ export default function FileList({ files, onChanged, onError }) {
         {files.map((f) => (
           <li key={f.id} className="file-row">
             <div className="file-info">
-              <div className="name">{f.encrypted_name || `file-${f.id}`}</div>
+              <div className="name">{revealedNames[f.id] || `🔒 Encrypted file #${f.id}`}</div>
               <div className="meta">
                 {formatSize(f.original_size_bytes)} · {new Date(f.created_at).toLocaleString()}
               </div>
@@ -94,7 +109,11 @@ export default function FileList({ files, onChanged, onError }) {
       {downloadTarget && (
         <EncryptionPasswordModal
           title="Decrypt & download"
-          hint={`Enter the encryption password used when "${downloadTarget.encrypted_name}" was uploaded.`}
+          hint={
+            revealedNames[downloadTarget.id]
+              ? `Enter the encryption password used when "${revealedNames[downloadTarget.id]}" was uploaded.`
+              : "Enter the encryption password used when this file was uploaded. The filename itself is encrypted, so it will only appear after you unlock it."
+          }
           confirmLabel="Decrypt & Download"
           onConfirm={handleDecrypt}
           onCancel={() => setDownloadTarget(null)}

@@ -7,3 +7,4 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+6:48:18 pm [vite] hmr update /src/api/AuthContext.jsx, /src/pages/Vault.jsx, /src/components/FileUploader.jsx, /src/components/FileList.jsx

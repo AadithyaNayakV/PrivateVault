@@ -16,14 +16,14 @@ export default function FileUploader({ onUploaded, onError }) {
 
   async function handleConfirm(password) {
     const file = pendingFile;
-    const { ciphertext, iv, salt, kdfIterations } = await encryptFile(file, password);
+    const { ciphertext, iv, salt, kdfIterations, encryptedName } = await encryptFile(file, password);
 
     const formData = new FormData();
     formData.append("file", ciphertext, "ciphertext.bin");
     formData.append("iv", iv);
     formData.append("salt", salt);
     formData.append("kdf_iterations", String(kdfIterations));
-    formData.append("encrypted_name", file.name);
+    formData.append("encrypted_name", encryptedName);
     formData.append("mime_type", file.type || "application/octet-stream");
     formData.append("original_size_bytes", String(file.size));
 
