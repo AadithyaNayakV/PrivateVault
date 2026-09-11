@@ -1,0 +1,12 @@
+backend/storage_data/*
+!backend/storage_data/.gitkeep
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+
+frontend/node_modules/
+frontend/dist/
+
+.DS_Store
